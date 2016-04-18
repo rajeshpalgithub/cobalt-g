@@ -1,7 +1,12 @@
 var gps = require("gps-tracking");
 var express = require('express');
+var path = require('path');
 var app = express();
 var server = app.listen(3000);
+var cookieParser = require('cookie-parser');
+var session = require('express-session');
+var passport = require('passport');
+var bodyParser = require('body-parser');
 var io = require('socket.io')(server);	
 var MongoClient = require('mongodb').MongoClient,
 	assert = require('assert');
@@ -14,15 +19,61 @@ var options = {
 	'device_adapter'        : "TK103"
 }
 
-app.use(express.static('site/public'));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(cookieParser());
+app.use(session({
+  secret: 'keyboard cat',
+  resave: true,
+  saveUninitialized: true,
+  cookie: { secure: false }
+}));
+app.use(passport.initialize());
+app.use(passport.session()); // persistent login sessions
+
+app.use(express.static(__dirname + '/views'));
+app.set('view engine', 'ejs');
+
 
 app.get('/', function (req, res) {
-  res.sendFile(__dirname + '/site/index.html');
+
+    
+   // res.sendFile(__dirname + '/site/index.html');
+   // var user = { "user": "demo", "user_id": "123" };
+    // req.session.user = user;
+    console.log(req.session.user);
+  if (req.session.user) {
+      res.render('index');
+    } else {
+      res.render('login');
+    }
+});
+app.post('/login', function (req, res) {
+    var user = req.body.user;
+    var password = req.body.password;
+    if (user==='demo' && password ==='demo')
+    {
+        var user = {"user":"demo","user_id":"123"};
+        req.session.user = user;
+        //res.render('somePage.ext', { title: 'Login' })
+        //return res.status(200).send();
+         
+        console.log(req.session);
+        return res.redirect("/");
+    } else {
+        return res.status(401).send();
+    }
+    //
+});
+app.get('/login', function (req, res) {
+    res.render('login');
+    //
 });
 
 MongoClient.connect(mongourl, function(err, db) {
 	assert.equal(null, err);
 	console.log("Connected correctly to mongo DB server");
+
 
 	var collections = {
 		'pings': db.collection('pings')
@@ -61,11 +112,13 @@ MongoClient.connect(mongourl, function(err, db) {
 		device.on("ping",function(data) {
 			data.uid = this.getUID();
 			io.emit('ping', data);
-
+			data.latitude = data.latitude.toFixed(6);
+			data.longitude = data.longitude.toFixed(6);
 			//this = device
 			console.log("I'm here: " + data.latitude + ", " + data.longitude + " (" + this.getUID() + ")");
 
 			var data_to_insert = data;
+			//data_to_insert.userid = session.user.user_id;
 			data_to_insert.uid = this.getUID();
 
 			collections.pings.insert(data_to_insert);
@@ -83,7 +136,7 @@ MongoClient.connect(mongourl, function(err, db) {
 		//Also, you can listen on the native connection object
 		connection.on('data', function(data) {
 			//echo raw data package
-			//console.log(data.toString()); 
+			console.log(data.toString()); 
 		})
 
 	});
